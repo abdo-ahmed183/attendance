@@ -14,6 +14,7 @@
     syncPill: $('#syncPill'),
     syncPillText: $('#syncPillText'),
 
+    assistantNameInput: $('#assistantNameInput'), // التعديل: ربط خانة اسم المساعد
     centerSelect: $('#centerSelect'),
     btnStartSession: $('#btnStartSession'),
     btnGoSettingsFromGate: $('#btnGoSettingsFromGate'),
@@ -66,6 +67,7 @@
   // ---------------------------------------------------------------------
   const state = {
     currentCenter: sessionStorage.getItem('activeCenter') || '',
+    currentAssistant: sessionStorage.getItem('activeAssistant') || '', // حفظ اسم المساعد في الجلسة الحالية
     pendingStudent: null,
     hwChoice: null,
     scannerRunning: false,
@@ -125,7 +127,8 @@
   document.querySelectorAll('.nav-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const view = btn.dataset.view;
-      if (view === 'scan' && !state.currentCenter) {
+      // حظر الدخول لواجهة المسح قبل إدخال السنتر واسم المساعد أولاً
+      if (view === 'scan' && (!state.currentCenter || !state.currentAssistant)) {
         switchView('gate');
         return;
       }
@@ -146,6 +149,7 @@
       els.centerSelect.appendChild(opt);
     });
     if (state.currentCenter) els.centerSelect.value = state.currentCenter;
+    if (state.currentAssistant) els.assistantNameInput.value = state.currentAssistant;
 
     const lastSync = await AppDB.getMeta('lastSync');
     els.gateSyncInfo.textContent = lastSync
@@ -155,12 +159,26 @@
 
   els.btnStartSession.addEventListener('click', () => {
     const center = els.centerSelect.value;
+    const assistant = els.assistantNameInput.value.trim();
+
+    // التحقق الصارم من كتابة اسم المساعد بشكل ثنائي على الأقل
+    if (!assistant) {
+      showToast('يرجى كتابة اسم المساعد أولاً', 'bad');
+      return;
+    }
+    if (assistant.split(/\s+/).filter(Boolean).length < 2) {
+      showToast('يرجى كتابة اسم المساعد ثنائيًا على الأقل', 'bad');
+      return;
+    }
     if (!center) {
       showToast('اختر السنتر أولاً', 'bad');
       return;
     }
+
     state.currentCenter = center;
+    state.currentAssistant = assistant;
     sessionStorage.setItem('activeCenter', center);
+    sessionStorage.setItem('activeAssistant', assistant);
     updateCenterChip();
     switchView('scan');
   });
@@ -186,7 +204,7 @@
         { facingMode: 'environment' },
         { fps: 10, qrbox: { width: 230, height: 230 } },
         onScanSuccess,
-        () => {} // ignore per-frame decode failures
+        () => {}
       );
       state.scannerRunning = true;
     } catch (err) {
@@ -208,7 +226,7 @@
   async function onScanSuccess(decodedText) {
     if (scanLocked) return;
     scanLocked = true;
-    setTimeout(() => (scanLocked = false), 1500); // debounce repeat reads of the same code
+    setTimeout(() => (scanLocked = false), 1500);
 
     flashSeal(true);
     const id = decodedText.trim();
@@ -280,12 +298,9 @@
     els.searchResults.innerHTML = '';
   }
 
-  /** Enter pressed / explicit search: resolves exact ID or phone matches,
-   *  triggering the dedicated duplicate-phone picker when needed. */
   function commitSearch(query) {
     if (!query) return;
 
-    // 1) exact ID match — IDs are unique, go straight to confirm.
     const byId = AppDB.getStudentById(query);
     if (byId) {
       clearSearch();
@@ -293,7 +308,6 @@
       return;
     }
 
-    // 2) phone match — may hit siblings sharing a parent's number.
     const byPhone = AppDB.getStudentsByPhone(query);
     if (byPhone.length === 1) {
       clearSearch();
@@ -306,7 +320,6 @@
       return;
     }
 
-    // 3) fall back to fuzzy inline results (already shown by input listener)
     if (!AppDB.searchStudents(query, 1).length) {
       showToast('لم يتم العثور على أي طالب مطابق', 'bad');
     }
@@ -381,13 +394,13 @@
       center: state.currentCenter,
       timestamp: nowStamp(),
       homework: state.hwChoice === 'yes' ? 'Yes' : 'No',
+      assistant: state.currentAssistant || 'غير محدد', // إرسال اسم المساعد مع السجل الجديد
     };
     await AppDB.addAttendance(record);
     closeConfirmModal();
     showToast(`تم تسجيل حضور: ${student.name}`, 'good');
     refreshStats();
     updateNavBadge();
-    // Best-effort silent sync; failures are fine, it stays queued locally.
     if (Sync.isOnline()) pushLogsNow({ silent: true });
   });
 
@@ -426,7 +439,7 @@
           <span class="id mono">#${r.id}</span>
           <span class="info">
             <div class="n">${r.name}</div>
-            <div class="t mono">${r.timestamp} · ${r.center}</div>
+            <div class="t mono">${r.timestamp} · ${r.center} <span style="color:var(--primary); font-size:11px;">(👤 ${r.assistant || 'غير محدد'})</span></div>
           </span>
           <span class="hw-badge ${r.homework === 'Yes' ? 'yes' : 'no'}">${r.homework === 'Yes' ? 'واجب ✓' : 'واجب ✗'}</span>
           <span class="sync-dot ${r.synced ? 'synced' : ''}" title="${r.synced ? 'تمت المزامنة' : 'بانتظار المزامنة'}"></span>
@@ -449,6 +462,7 @@
       'السنتر': r.center,
       'تاريخ ووقت الحضور': r.timestamp,
       'حالة الواجب': r.homework,
+      'المساعد القائم بالمسح': r.assistant || 'غير محدد', // تضمين المساعد في ملف الإكسل المستخرج للـ Admin
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -504,7 +518,10 @@
 
   els.btnChangeCenter.addEventListener('click', () => {
     state.currentCenter = '';
+    state.currentAssistant = '';
     sessionStorage.removeItem('activeCenter');
+    sessionStorage.removeItem('activeAssistant');
+    els.assistantNameInput.value = '';
     updateCenterChip();
     populateCenters();
     switchView('gate');
@@ -514,6 +531,7 @@
     if (!confirm('سيتم مسح جميع بيانات الطلاب وسجلات الحضور المحفوظة على هذا الجهاز. هل أنت متأكد؟')) return;
     await AppDB.clearAll();
     sessionStorage.removeItem('activeCenter');
+    sessionStorage.removeItem('activeAssistant');
     showToast('تم مسح البيانات المحلية', 'good');
     setTimeout(() => location.reload(), 800);
   });
@@ -531,7 +549,12 @@
       if (!silent) showToast('لا يوجد اتصال بالإنترنت الآن — سيتم الرفع تلقائيًا عند عودة الاتصال', 'bad');
       return;
     }
+
+    // قفل الأزرار الحيوية فوراً لمنع التكرار البشري وتلف أطراف البيانات
+    els.btnSyncNow.disabled = true;
+    els.btnPushLogs.disabled = true;
     updateSyncPill('pending');
+
     try {
       await Sync.pushAttendance(unsynced);
       await AppDB.markSynced(unsynced.map((r) => r.localId));
@@ -543,6 +566,8 @@
     } catch (err) {
       if (!silent) showToast(err.message || 'فشل رفع السجلات', 'bad');
     } finally {
+      els.btnSyncNow.disabled = false;
+      els.btnPushLogs.disabled = false;
       updateSyncPill();
     }
   }
@@ -592,7 +617,7 @@
       navigator.serviceWorker.register('sw.js').catch(() => {});
     }
 
-    if (state.currentCenter) {
+    if (state.currentCenter && state.currentAssistant) {
       switchView('scan');
     } else {
       switchView('gate');

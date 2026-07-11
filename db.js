@@ -2,7 +2,7 @@
  * db.js — IndexedDB wrapper.
  * Stores:
  *   students   : keyPath 'id'      -> { id, name, phone }
- *   attendance : keyPath 'localId' (autoIncrement) -> { localId, id, name, center, timestamp, homework, synced }
+ *   attendance : keyPath 'localId' (autoIncrement) -> { localId, id, name, center, timestamp, homework, assistant, synced }
  *   meta       : keyPath 'key'     -> { key, value }
  *
  * All students are also cached in memory (window.AppDB.studentCache) after
@@ -11,7 +11,7 @@
  */
 (function () {
   const DB_NAME = 'attendance_db';
-  const DB_VERSION = 1;
+  const DB_VERSION = 2; // تحديث الإصدار لتفعيل تمليك الفهارس السريعة (Phone Index) بأمان
   let dbPromise = null;
 
   function openDB() {
@@ -20,13 +20,23 @@
       const req = indexedDB.open(DB_NAME, DB_VERSION);
       req.onupgradeneeded = (e) => {
         const db = e.target.result;
+        
+        // تفعيل الـ Index السريع للبحث عن الأخوة برقم الهاتف
         if (!db.objectStoreNames.contains('students')) {
-          db.createObjectStore('students', { keyPath: 'id' });
+          const store = db.createObjectStore('students', { keyPath: 'id' });
+          store.createIndex('phone', 'phone', { unique: false });
+        } else {
+          const store = e.target.transaction.objectStore('students');
+          if (!store.indexNames.contains('phone')) {
+            store.createIndex('phone', 'phone', { unique: false });
+          }
         }
+
         if (!db.objectStoreNames.contains('attendance')) {
           const store = db.createObjectStore('attendance', { keyPath: 'localId', autoIncrement: true });
           store.createIndex('synced', 'synced', { unique: false });
         }
+        
         if (!db.objectStoreNames.contains('meta')) {
           db.createObjectStore('meta', { keyPath: 'key' });
         }

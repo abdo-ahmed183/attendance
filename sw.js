@@ -3,7 +3,7 @@
  * after the first successful load. Student/attendance data itself lives in
  * IndexedDB (see db.js), not here.
  */
-const CACHE_NAME = 'attendance-shell-v1';
+const CACHE_NAME = 'attendance-shell-v2'; // تم التحديث لضمان كشط القديم
 const SHELL_FILES = [
   './',
   './index.html',
@@ -28,6 +28,7 @@ self.addEventListener('install', (event) => {
       )
     )
   );
+  // إجبار المتصفح على تفعيل ملف الـ SW الجديد فوراً دون انتظار إغلاق التاب
   self.skipWaiting();
 });
 
@@ -37,6 +38,7 @@ self.addEventListener('activate', (event) => {
       Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
     )
   );
+  // السيطرة المباشرة والفورية على جميع التابات المفتوحة لتطبيق التحديث
   self.clients.claim();
 });
 

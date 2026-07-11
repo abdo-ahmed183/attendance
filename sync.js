@@ -10,8 +10,8 @@
  *   GET  {API_URL}?action=centers  -> raw JSON array of center names:
  *        [ "Center A", "Center B", ... ]
  *
- *   POST {API_URL}   body: a single record OR an array of records:
- *        { id, name, center, timestamp, homework }
+ *   POST {API_URL}    body wrapped in an action object with a protection token:
+ *        { token: API_TOKEN, action: "syncAttendance", data: [ { id, name, center, timestamp, homework, assistant }, ... ] }
  *      -> { status: "success", inserted: <n> }
  *
  * POST uses Content-Type: text/plain to dodge CORS preflight (Apps Script
@@ -19,6 +19,9 @@
  * Apps Script web apps from a browser.
  */
 (function () {
+  // توكن الحماية السري للمزامنة الآمنة المرفوعة على Google Apps Script
+  const API_TOKEN = "MySecretAttendanceToken2026";
+
   const Sync = {
     async getApiUrl() {
       return "https://script.google.com/macros/s/AKfycbxCgPtSoyPA3c04agllpCmpYKPbeI7eYDoR2jaYbY9hpLJI4s9gvAf3MvZmSOVoEg/exec";
@@ -62,30 +65,59 @@
       return { students, centers };
     },
 
-    /** Pushes a batch of local attendance records up to the sheet in one call. */
+    /** Pushes a batch of local attendance records up to the sheet in one call with retries. */
     async pushAttendance(records) {
       const apiUrl = await this.getApiUrl();
       if (!apiUrl) throw new Error('لم يتم ضبط رابط الـ API بعد.');
       if (!this.isOnline()) throw new Error('لا يوجد اتصال بالإنترنت.');
       if (!records.length) return { status: 'success', inserted: 0 };
 
-      const body = records.map((r) => ({
+      // إعداد البيانات وتضمين حقل اسم المساعد لكل سجل حضور تم مسحه
+      const mappedRecords = records.map((r) => ({
         id: r.id,
         name: r.name,
         center: r.center,
         timestamp: r.timestamp,
         homework: r.homework,
+        assistant: r.assistant || 'غير محدد', 
       }));
 
-      const res = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // avoids CORS preflight
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error(`فشل رفع السجلات (${res.status})`);
-      const data = await res.json();
-      if (data.status !== 'success') throw new Error(data.message || 'فشل رفع السجلات إلى الشيت.');
-      return data;
+      // تغليف طلب الـ POST بتوكن الأمان ونوع العملية للحماية
+      const payload = {
+        token: API_TOKEN,
+        action: 'syncAttendance',
+        data: mappedRecords
+      };
+
+      let lastError = null;
+      const maxRetries = 3;
+
+      // آلية إعادة المحاولة لتفادي انقطاع الإنترنت المؤقت
+      for (let i = 0; i < maxRetries; i++) {
+        try {
+          const res = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // avoids CORS preflight
+            body: JSON.stringify(payload),
+          });
+          
+          if (!res.ok) throw new Error(`فشل رفع السجلات وتجاوب السيرفر بـ (${res.status})`);
+          
+          const data = await res.json();
+          if (data.status !== 'success') throw new Error(data.message || 'فشل رفع السجلات إلى الشيت.');
+          
+          return data; // نجاح العملية، ارجع بالنتيجة فوراً
+        } catch (err) {
+          lastError = err;
+          console.warn(`⚠️ محاولة مزامنة فاشلة رقم ${i + 1}. جاري المحاولة مجدداً خلال ثانيتين...`);
+          if (i < maxRetries - 1) {
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          }
+        }
+      }
+
+      // إذا فشلت كل المحاولات، ارمي آخر خطأ حدث للتعامل معه في الواجهة
+      throw lastError;
     },
   };
 
