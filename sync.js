@@ -21,7 +21,7 @@
 (function () {
   const Sync = {
     async getApiUrl() {
-      return AppDB.getMeta('apiUrl');
+      return "https://script.google.com/macros/s/AKfycbxCgPtSoyPA3c04agllpCmpYKPbeI7eYDoR2jaYbY9hpLJI4s9gvAf3MvZmSOVoEg/exec";
     },
     async setApiUrl(url) {
       return AppDB.setMeta('apiUrl', url.trim());
