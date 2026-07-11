@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>حضور | نظام حضور الطلاب</title>
+<meta name="theme-color" content="#0E2A2E">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ Top bar ============ -->
+  <div class="topbar">
+    <div class="brand">
+      <div class="seal">ح</div>
+      <div>
+        <div class="title">حضور</div>
+        <div class="center-chip" id="topbarCenter">لم يتم اختيار السنتر</div>
+      </div>
+    </div>
+    <button class="sync-pill offline" id="syncPill">
+      <span class="dot"></span>
+      <span id="syncPillText">غير متصل</span>
+    </button>
+  </div>
+
+  <!-- ============ View: Center selection (gate) ============ -->
+  <div class="view" id="view-gate">
+    <div class="center-select-screen">
+      <div>
+        <div class="eyebrow">بدء الجلسة / START SESSION</div>
+        <h1>اختر السنتر</h1>
+        <p class="help-text">يتم حفظ اختيارك تلقائيًا لكل عمليات المسح خلال هذه الجلسة.</p>
+      </div>
+      <div class="field">
+        <select id="centerSelect">
+          <option value="">-- اختر السنتر --</option>
+        </select>
+      </div>
+      <button class="btn btn-primary btn-block" id="btnStartSession">ابدأ جلسة المسح</button>
+      <button class="btn btn-outline btn-block" id="btnGoSettingsFromGate">الإعدادات ومزامنة البيانات</button>
+      <div class="help-text" id="gateSyncInfo">لم تتم أي مزامنة بعد.</div>
+    </div>
+  </div>
+
+  <!-- ============ View: Scan ============ -->
+  <div class="view" id="view-scan">
+    <div class="scan-stage">
+      <div id="qr-reader"></div>
+      <div class="scan-seal" id="scanSeal">
+        <svg viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="42"></circle>
+          <path d="M32 52 L45 65 L70 35" fill="none" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" style="stroke:transparent"></path>
+        </svg>
+      </div>
+    </div>
+    <div class="scan-hint">وجّه الكاميرا نحو كود QR الخاص بالطالب، أو ابحث يدويًا بالأسفل</div>
+
+    <div class="search-row">
+      <span class="icon">⌕</span>
+      <input type="text" id="manualSearch" placeholder="ابحث بالرقم التعريفى أو رقم الهاتف">
+    </div>
+    <div class="results-list" id="searchResults" style="display:none;"></div>
+
+    <div class="session-stats">
+      <div class="stat-card">
+        <div class="num mono" id="statPresent">0</div>
+        <div class="label">حضروا اليوم</div>
+      </div>
+      <div class="stat-card">
+        <div class="num mono" id="statPending">0</div>
+        <div class="label">بانتظار المزامنة</div>
+      </div>
+      <div class="stat-card">
+        <div class="num mono" id="statStudents">0</div>
+        <div class="label">إجمالي الطلاب (محلي)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ View: History / Admin ============ -->
+  <div class="view" id="view-history">
+    <div class="section-header">
+      <h2>سجل الحضور</h2>
+      <span class="mono" style="font-size:12px;color:var(--muted)" id="historyCount">0 سجل</span>
+    </div>
+    <div class="action-row">
+      <button class="btn btn-dark" id="btnSyncNow" style="flex:1;">مزامنة الآن</button>
+      <button class="btn btn-outline" id="btnExport" style="flex:1;">تصدير Excel</button>
+    </div>
+    <div class="log-table" id="logTable"></div>
+  </div>
+
+  <!-- ============ View: Settings ============ -->
+  <div class="view" id="view-settings">
+    <div class="section-header"><h2>الإعدادات</h2></div>
+
+    <div class="settings-group">
+      <div class="field">
+        <label>رابط تطبيق الويب (Google Apps Script Web App URL)</label>
+        <input type="url" id="apiUrlInput" placeholder="https://script.google.com/macros/s/XXXX/exec">
+        <div class="help-text">يُستخدم هذا الرابط لجلب بيانات الطلاب ورفع سجلات الحضور من/إلى Google Sheet. راجع ملف README لطريقة الإعداد.</div>
+      </div>
+      <button class="btn btn-outline btn-block" id="btnSaveApiUrl">حفظ الرابط</button>
+    </div>
+
+    <div class="settings-group">
+      <div class="field">
+        <label>مزامنة بيانات الطلاب (تنزيل)</label>
+        <div class="help-text" id="lastSyncText">لم تتم أي مزامنة بعد.</div>
+      </div>
+      <button class="btn btn-primary btn-block" id="btnSyncStudents">
+        <span id="syncStudentsBtnText">تحديث قاعدة بيانات الطلاب الآن</span>
+      </button>
+    </div>
+
+    <div class="settings-group">
+      <div class="field">
+        <label>رفع السجلات المحلية إلى الشيت</label>
+        <div class="help-text" id="pendingSyncText">0 سجل بانتظار الرفع.</div>
+      </div>
+      <button class="btn btn-dark btn-block" id="btnPushLogs">رفع السجلات الآن</button>
+    </div>
+
+    <div class="settings-group">
+      <div class="field">
+        <label>الجلسة الحالية</label>
+        <div class="help-text">السنتر النشط: <b id="settingsCurrentCenter">-</b></div>
+      </div>
+      <button class="btn btn-outline btn-block" id="btnChangeCenter">تغيير السنتر</button>
+    </div>
+
+    <div class="settings-group">
+      <div class="field">
+        <label>منطقة الخطر</label>
+        <div class="help-text">مسح جميع البيانات المحلية (الطلاب والسجلات) من هذا الجهاز. لا يؤثر على Google Sheet.</div>
+      </div>
+      <button class="btn btn-bad btn-block" id="btnWipeLocal">مسح البيانات المحلية</button>
+    </div>
+  </div>
+
+  <!-- ============ Bottom nav ============ -->
+  <div class="bottom-nav" id="bottomNav">
+    <button class="nav-btn active" data-view="scan">
+      <span>📷</span><span>المسح</span>
+    </button>
+    <button class="nav-btn" data-view="history">
+      <span style="position:relative">📋<span class="dot-badge" id="navHistoryBadge" style="display:none;">0</span></span>
+      <span>السجل</span>
+    </button>
+    <button class="nav-btn" data-view="settings">
+      <span>⚙️</span><span>الإعدادات</span>
+    </button>
+  </div>
+
+  <!-- ============ Modal: Duplicate phone selection ============ -->
+  <div class="modal-overlay" id="modalDuplicate">
+    <div class="modal-sheet">
+      <div class="handle"></div>
+      <div class="duplicate-banner">
+        <span>⚠️</span>
+        <span>هذا الرقم مسجل لأكثر من طالب (إخوة). اختر الطالب الصحيح للمتابعة:</span>
+      </div>
+      <div class="results-list" id="duplicateList"></div>
+      <button class="btn btn-outline btn-block" id="btnCancelDuplicate" style="margin-top:14px;">إلغاء</button>
+    </div>
+  </div>
+
+  <!-- ============ Modal: Homework confirm ============ -->
+  <div class="modal-overlay" id="modalConfirm">
+    <div class="modal-sheet">
+      <div class="handle"></div>
+      <div class="modal-student-card">
+        <div class="avatar" id="confirmAvatar">-</div>
+        <div>
+          <div class="name" id="confirmName">-</div>
+          <div class="sub mono" id="confirmMeta">-</div>
+        </div>
+      </div>
+      <div class="toggle-row">
+        <div class="q">هل أنهى الطالب الواجب؟</div>
+        <div class="hw-toggle">
+          <button id="hwYes" data-v="yes">نعم</button>
+          <button id="hwNo" data-v="no">لا</button>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" style="flex:1;" id="btnCancelConfirm">إلغاء</button>
+        <button class="btn btn-good" style="flex:2;" id="btnSaveConfirm">تأكيد وحفظ الحضور</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="db.js"></script>
+<script src="sync.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
